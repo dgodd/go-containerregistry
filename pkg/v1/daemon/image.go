@@ -17,8 +17,10 @@ package daemon
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"io/ioutil"
+	"time"
 
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 
@@ -45,21 +47,32 @@ type imageOpener struct {
 type ImageOption func(*imageOpener) error
 
 func (i *imageOpener) Open() (v1.Image, error) {
+	start := time.Now()
+
 	var opener tarball.Opener
 	var err error
 	if i.buffered {
+		fmt.Println("opener, err = bufferedOpener(i.ref)")
 		opener, err = bufferedOpener(i.ref)
 	} else {
+		fmt.Println("opener, err = unbufferedOpener(i.ref)")
 		opener, err = unbufferedOpener(i.ref)
 	}
 	if err != nil {
 		return nil, err
 	}
 
+	fmt.Printf("after open: %s\n", time.Since(start))
+	start = time.Now()
+
 	tb, err := tarball.Image(opener, nil)
 	if err != nil {
 		return nil, err
 	}
+
+	fmt.Printf("after tarball.Image: %s\n", time.Since(start))
+	start = time.Now()
+
 	img := &image{
 		Image: tb,
 	}
@@ -82,26 +95,37 @@ var getImageSaver = func() (ImageSaver, error) {
 }
 
 func saveImage(ref name.Reference) (io.ReadCloser, error) {
+	start := time.Now()
 	cli, err := getImageSaver()
 	if err != nil {
 		return nil, err
 	}
+
+	fmt.Printf("after getImageSaver(): %s\n", time.Since(start))
 
 	return cli.ImageSave(context.Background(), []string{ref.Name()})
 }
 
 func bufferedOpener(ref name.Reference) (tarball.Opener, error) {
 	// Store the tarball in memory and return a new reader into the bytes each time we need to access something.
+	start := time.Now()
 	rc, err := saveImage(ref)
 	if err != nil {
 		return nil, err
 	}
 	defer rc.Close()
 
+	fmt.Printf("after saveImage: %s\n", time.Since(start))
+	start = time.Now()
+
 	imageBytes, err := ioutil.ReadAll(rc)
 	if err != nil {
 		return nil, err
 	}
+
+	fmt.Printf("after ReadAll: %s\n", time.Since(start))
+	start = time.Now()
+
 	// The tarball interface takes a function that it can call to return an opened reader-like object.
 	// Daemon comes from a set of bytes, so wrap them in a ReadCloser so it looks like an opened file.
 	return func() (io.ReadCloser, error) {

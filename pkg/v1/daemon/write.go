@@ -15,9 +15,12 @@
 package daemon
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"io/ioutil"
+	"time"
 
 	"github.com/pkg/errors"
 
@@ -52,15 +55,28 @@ type WriteOptions struct {
 
 // Write saves the image into the daemon as the given tag.
 func Write(tag name.Tag, img v1.Image, wo WriteOptions) (string, error) {
+	fmt.Printf("daemon.Write: %#v :: %#v :: %#v\n", tag, img, wo)
+	start := time.Now()
+
 	cli, err := GetImageLoader()
 	if err != nil {
 		return "", err
 	}
 
-	pr, pw := io.Pipe()
-	go func() {
-		pw.CloseWithError(tarball.Write(tag, img, &tarball.WriteOptions{}, pw))
-	}()
+	fmt.Printf("- daemon.Write (1) took %s\n", time.Since(start))
+	start = time.Now()
+
+	// pr, pw := io.Pipe()
+	// go func() {
+	// 	pw.CloseWithError(tarball.Write(tag, img, &tarball.WriteOptions{}, pw))
+	// }()
+
+	var buf bytes.Buffer
+	tarball.Write(tag, img, &tarball.WriteOptions{}, &buf)
+	pr := bytes.NewReader(buf.Bytes())
+
+	fmt.Printf("- daemon.Write (2) took %s\n", time.Since(start))
+	start = time.Now()
 
 	// write the image in docker save format first, then load it
 	resp, err := cli.ImageLoad(context.Background(), pr, false)
@@ -68,7 +84,14 @@ func Write(tag name.Tag, img v1.Image, wo WriteOptions) (string, error) {
 		return "", errors.Wrapf(err, "error loading image")
 	}
 	defer resp.Body.Close()
+
+	fmt.Printf("- daemon.Write (3) took %s\n", time.Since(start))
+	start = time.Now()
+
 	b, readErr := ioutil.ReadAll(resp.Body)
+
+	fmt.Printf("- daemon.Write (4) took %s\n", time.Since(start))
+
 	response := string(b)
 	if readErr != nil {
 		return response, errors.Wrapf(err, "error reading load response body")

@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1"
@@ -94,10 +95,16 @@ func MultiWrite(tagToImage map[name.Tag]v1.Image, wo *WriteOptions, w io.Writer)
 		}
 		layerFiles := make([]string, len(layers))
 		for i, l := range layers {
+			fmt.Printf("- MultiWrite (0) type %#v\n", l)
+			start := time.Now()
+
 			d, err := l.Digest()
 			if err != nil {
 				return err
 			}
+
+			fmt.Printf("- MultiWrite (digest) took %s\n", time.Since(start))
+			start = time.Now()
 
 			// Munge the file name to appease ancient technology.
 			//
@@ -114,14 +121,23 @@ func MultiWrite(tagToImage map[name.Tag]v1.Image, wo *WriteOptions, w io.Writer)
 			if err != nil {
 				return err
 			}
+
+			fmt.Printf("- MultiWrite (compressed) took %s\n", time.Since(start))
+			start = time.Now()
+
 			blobSize, err := l.Size()
 			if err != nil {
 				return err
 			}
 
+			fmt.Printf("- MultiWrite (size) took %s\n", time.Since(start))
+			start = time.Now()
+
 			if err := writeTarEntry(tf, layerFiles[i], r, blobSize); err != nil {
 				return err
 			}
+
+			fmt.Printf("- MultiWrite (writeTarEntry) took %s\n", time.Since(start))
 		}
 
 		// Generate the tar descriptor and write it.

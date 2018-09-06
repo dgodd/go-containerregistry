@@ -24,6 +24,7 @@ import (
 	"io/ioutil"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1"
@@ -68,6 +69,7 @@ func ImageFromPath(path string, tag *name.Tag) (v1.Image, error) {
 
 // Image exposes an image from the tarball at the provided path.
 func Image(opener Opener, tag *name.Tag) (v1.Image, error) {
+	start := time.Now()
 	img := &image{
 		opener: opener,
 		tag:    tag,
@@ -76,22 +78,33 @@ func Image(opener Opener, tag *name.Tag) (v1.Image, error) {
 		return nil, err
 	}
 
+	fmt.Printf("- img.loadTarDescriptorAndConfig took %s\n", time.Since(start))
+	start = time.Now()
+
 	// Peek at the first layer and see if it's compressed.
 	compressed, err := img.areLayersCompressed()
 	if err != nil {
 		return nil, err
 	}
+
+	fmt.Printf("- img.areLayersCompressed took %s\n", time.Since(start))
+	start = time.Now()
+
 	if compressed {
 		c := compressedImage{
 			image: img,
 		}
-		return partial.CompressedToImage(&c)
+		i, e := partial.CompressedToImage(&c)
+		fmt.Printf("- partial.CompressedToImage took %s\n", time.Since(start))
+		return i, e
 	}
 
 	uc := uncompressedImage{
 		image: img,
 	}
-	return partial.UncompressedToImage(&uc)
+	i, e := partial.UncompressedToImage(&uc)
+	fmt.Printf("- partial.UncompressedToImage took %s\n", time.Since(start))
+	return i, e
 }
 
 func (i *image) MediaType() (types.MediaType, error) {
